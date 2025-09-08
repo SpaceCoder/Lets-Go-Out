@@ -1,8 +1,55 @@
 import React, { useState, useEffect } from "react";
 import "react-day-picker/dist/style.css";
 
+// --- Material UI Imports ---
+import {
+  Button,
+  TextField,
+  Box,
+  Paper,
+  ThemeProvider,
+  createTheme,
+  Typography,
+} from "@mui/material";
+
+// Create a basic Material UI theme
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: "#1976d2",
+    },
+    secondary: {
+      main: "#4caf50",
+    },
+  },
+});
+
 // Let's Go Out - Simplified MVP
 // Removed map complexity — neighborhoods are now a simple multi-select list
+
+const NEIGHBORHOOD_EATER_LINKS = {
+  "Battery Park City": "https://ny.eater.com/neighborhood/1392/battery-park-city",
+  "Chinatown": "https://ny.eater.com/neighborhood/1387/chinatown",
+  "Chelsea": "https://ny.eater.com/neighborhood/1375/chelsea",
+  "East Village": "https://ny.eater.com/neighborhood/1377/east-village",
+  "Financial District": "https://ny.eater.com/neighborhood/1393/financial-district",
+  "Flatiron District": "https://ny.eater.com/neighborhood/1376/flatiron-district",
+  "Greenwich Village": "https://ny.eater.com/neighborhood/1378/greenwich-village",
+  "Harlem": "https://ny.eater.com/neighborhood/1388/east-harlem",
+  "Hell's Kitchen": "https://ny.eater.com/neighborhood/1397/hell-s-kitchen",
+  "Hudson Yards": "https://ny.eater.com/neighborhood/1398/hudson-yards",
+  "Lower East Side": "https://ny.eater.com/neighborhood/1381/lower-east-side",
+  "Meatpacking District": "https://ny.eater.com/neighborhood/1384/meatpacking-district",
+  "Morningside Heights": "https://ny.eater.com/neighborhood/1396/harlem-morningside-heights",
+  "NoHo": "https://ny.eater.com/neighborhood/1405/noho",
+  "Roosevelt Island": "https://ny.eater.com/neighborhood/1382/roosevelt-island",
+  "SoHo": "https://ny.eater.com/neighborhood/1379/soho",
+  "TriBeCa": "https://ny.eater.com/neighborhood/1380/tribeca",
+  "Upper East Side": "https://ny.eater.com/neighborhood/1373/upper-east-side",
+  "Upper West Side": "https://ny.eater.com/neighborhood/1374/upper-west-side",
+  "Washington Heights": "https://ny.eater.com/neighborhood/1399/inwood-washington-heights",
+  "West Village": "https://ny.eater.com/neighborhood/1385/west-village",
+};
 
 export default function LetsGoOut() {
   const TIME_RANGES = ["Morning", "Afternoon", "Evening", "Night"];
@@ -78,6 +125,14 @@ export default function LetsGoOut() {
     setMe((prev) => {
       if (prev.dates[date]) return prev; // prevent duplicates
       return { ...prev, dates: { ...prev.dates, [date]: [] } };
+    });
+  }
+
+  function handleDateRemove(dateToRemove) {
+    setMe((prev) => {
+      const newDates = { ...prev.dates };
+      delete newDates[dateToRemove];
+      return { ...prev, dates: newDates };
     });
   }
 
@@ -199,12 +254,12 @@ export default function LetsGoOut() {
   }
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00'); 
+    const date = new Date(dateString + 'T00:00:00');
     const options = { weekday: 'long', month: 'short', day: 'numeric' };
     return date.toLocaleDateString('en-US', options);
   };
-  
-  const createICalendarString = (overlap) => {
+
+  const createICalendarString = (date, range) => {
     let icsString = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Lets Go Out//NONSGML v1.0//EN
@@ -242,15 +297,13 @@ PRODID:-//Lets Go Out//NONSGML v1.0//EN
       };
     };
 
-    Object.entries(overlap.dates).forEach(([date, ranges]) => {
-      ranges.forEach((range) => {
-        const eventTimes = getEventTimes(date, range);
-        if (eventTimes) {
-          const summary = `Lets Go Out - ${range}`;
-          const location = overlap.neighborhoods.join(", ") || "Undecided Neighborhood";
-          const description = `Matched time: ${range}\nCommon Neighborhoods: ${location}`;
+    const eventTimes = getEventTimes(date, range);
+    if (eventTimes) {
+      const summary = `Lets Go Out - ${range}`;
+      const location = overlap.neighborhoods.join(", ") || "Undecided Neighborhood";
+      const description = `Matched time: ${range}\nCommon Neighborhoods: ${location}`;
 
-          icsString += `BEGIN:VEVENT
+      icsString += `BEGIN:VEVENT
 UID:${Date.now()}-${date}-${range}@letsgoout.app
 DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, -5)}Z
 DTSTART:${eventTimes.start}
@@ -260,21 +313,19 @@ DESCRIPTION:${description}
 LOCATION:${location}
 END:VEVENT
 `;
-        }
-      });
-    });
+    }
 
     icsString += `END:VCALENDAR`;
     return icsString;
   };
-  
-  const downloadICalendar = () => {
-    const icsContent = createICalendarString(overlap);
+
+  const downloadICalendarEvent = (date, range) => {
+    const icsContent = createICalendarString(date, range);
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'lets-go-out-matches.ics');
+    link.setAttribute('download', `lets-go-out-${date}-${range}.ics`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -285,316 +336,315 @@ END:VEVENT
   const otherDates = safeDates(other);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-start justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-4">
-        <header className="mb-4">
-          <h1 className="text-2xl font-semibold">Let's Go Out</h1>
-          <p className="text-sm text-gray-600">
-            Share when you're free and where you could meet
-          </p>
-        </header>
-        
-        {isResultsPage ? (
-          <div className="flex flex-col items-center">
-            {Object.keys(overlap.dates).length > 0 ? (
-              <>
-                <div className="w-full text-center">
-                  <h2 className="text-xl font-semibold text-green-800 mb-4">
-                    It's a Match! 🎉
-                  </h2>
-                </div>
-                <div className="w-full space-y-4">
-                  {Object.entries(overlap.dates).map(([d, ranges]) => (
-                    <div key={d} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                      <div className="flex items-center text-lg font-bold mb-2">
-                        <span className="text-gray-500 mr-2">📅</span>
-                        {formatDate(d)}
-                      </div>
-                      <div className="space-y-1">
-                        {ranges.map((r, index) => (
-                          <div key={index} className="flex items-center text-sm text-gray-700">
-                            <span className="text-gray-500 mr-2">⏰</span>
-                            {r}
-                          </div>
-                        ))}
-                      </div>
-                      {overlap.neighborhoods.length > 0 && (
-                        <div className="mt-3 text-sm text-gray-700">
-                          <span className="text-gray-500 mr-2">📍</span>
-                          {overlap.neighborhoods.join(", ")}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={downloadICalendar}
-                  className="px-4 py-2 mt-6 rounded-xl bg-gray-200 text-gray-800 font-semibold flex items-center"
-                >
-                  <span className="mr-2">🗓️</span> Add to Calendar
-                </button>
-              </>
-            ) : (
-              <div className="w-full p-4 rounded-xl border border-yellow-200 bg-yellow-50 text-yellow-800">
-                <p className="text-center">
-                  No matching dates, times, or neighborhoods found. Maybe one of you can be a little more flexible!
-                </p>
-              </div>
-            )}
-            <button onClick={startOver} className="px-4 py-2 mt-6 rounded-xl border">
-              Start Over
-            </button>
-          </div>
-        ) : isSecondUser && other ? (
-          <div>
-            <div className="mb-3 p-3 rounded-lg bg-gray-100">
-              <div className="text-sm text-gray-700">Invited by:</div>
-              <div className="font-medium">{other.name || "Friend"}</div>
-              <div className="text-xs text-gray-500 mt-1">
-                {Object.keys(otherDates).length > 0 ? (
-                  <ul className="list-disc list-inside text-sm">
-                    {Object.entries(otherDates).map(([d, ranges]) => (
-                      <li key={d}>
-                        {d}: {(Array.isArray(ranges) ? ranges : []).join(", ")}
-                      </li>
+    <ThemeProvider theme={theme}>
+      <Box className="min-h-screen bg-gray-50 flex items-start justify-center p-4">
+        <Paper className="w-full max-w-md" sx={{ p: 4, borderRadius: 2 }}>
+          <Box mb={2}>
+            <Typography variant="h5" component="h1" gutterBottom>
+              Let's Go Out
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Share when you're free and where you could meet
+            </Typography>
+          </Box>
+
+          {isResultsPage ? (
+            <Box className="flex flex-col items-center">
+              {Object.keys(overlap.dates).length > 0 ? (
+                <>
+                  <Box className="w-full text-center" mb={2}>
+                    <Typography variant="h6" component="h2" color="secondary" sx={{ fontWeight: 'bold' }}>
+                      It's a Match! 🎉
+                    </Typography>
+                  </Box>
+                  <Box className="w-full space-y-4">
+                    {Object.entries(overlap.dates).map(([d, ranges]) => (
+                      <Paper key={d} sx={{ p: 2, borderRadius: 2 }}>
+                        <Box display="flex" alignItems="center" mb={1}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                            📅 {formatDate(d)}
+                          </Typography>
+                        </Box>
+                        <Box className="space-y-1">
+                          {ranges.map((r, index) => (
+                            <Box key={index} display="flex" alignItems="center" justifyContent="space-between">
+                              <Typography variant="body2" color="text.secondary">
+                                ⏰ {r}
+                              </Typography>
+                              <Button
+                                onClick={() => downloadICalendarEvent(d, r)}
+                                variant="text"
+                                size="small"
+                                sx={{ textTransform: 'none' }}
+                              >
+                                🗓️ Add to Calendar
+                              </Button>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Paper>
                     ))}
-                  </ul>
-                ) : (
-                  <div>No dates selected</div>
-                )}
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-2">
-                Your name (optional)
-              </label>
-              <input
-                className="w-full rounded-md border px-3 py-2"
-                placeholder="Your name"
-                value={me.name}
-                onChange={(e) => setMe((s) => ({ ...s, name: e.target.value }))}
-              />
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-2">
-                Choose dates & times
-              </label>
-
-              <input
-                type="date"
-                className="w-full border rounded-md px-3 py-2 mb-2"
-                onChange={handleDateSelect}
-              />
-
-              <div className="mt-2 space-y-3">
-                {Object.keys(meDates).map((d) => (
-                  <div key={d} className="border rounded-md p-2">
-                    <div className="font-medium text-sm mb-1">{d}</div>
-                    <div className="flex flex-wrap gap-2 justify-start">
-                      {TIME_RANGES.map((r) => {
-                        const selectedForDate = Array.isArray(meDates[d])
-                          ? meDates[d]
-                          : [];
-                        const active = selectedForDate.includes(r);
-                        return (
-                          <button
-                            key={r}
-                            onClick={() => toggleTimeRange(d, r)}
-                            className={`flex items-center px-4 py-2 rounded-full border text-sm transition-colors whitespace-nowrap
-                              ${
-                                active
-                                  ? "bg-blue-50 text-blue-700 border-blue-400"
-                                  : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
-                              }`}
-                            style={{
-                              WebkitTapHighlightColor: "transparent",
-                              userSelect: "none",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {active && <span className="mr-2">✓</span>}
-                            {r}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Neighborhoods
-              </label>
-              <div className="flex flex-wrap gap-2 justify-start">
-                {NEIGHBORHOODS.map((n) => {
-                  const active = me.neighborhoods.includes(n);
-                  return (
-                    <button
-                      key={n}
-                      onClick={() => toggleNeighborhood(n)}
-                      className={`flex items-center px-4 py-2 rounded-full border text-sm transition-colors whitespace-nowrap
-                        ${
-                          active
-                            ? "bg-blue-50 text-blue-700 border-blue-400"
-                            : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
-                        }`}
-                      style={{
-                        WebkitTapHighlightColor: "transparent",
-                        userSelect: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {active && <span className="mr-2">✓</span>}
-                      {n}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={makeResultsLink}
-                className="flex-1 px-4 py-2 rounded-xl bg-green-600 text-white font-semibold"
-              >
-                Get Shareable Results Link
-              </button>
-
-              <button onClick={startOver} className="px-4 py-2 rounded-xl border">
+                  </Box>
+                  {overlap.neighborhoods.length > 0 && (
+                    <Box sx={{ mt: 2, p: 2, borderRadius: 2, backgroundColor: 'grey.100' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        Explore Restaurants in a Common Neighborhood:
+                      </Typography>
+                      <ul className="list-disc list-inside text-sm text-blue-600 space-y-1">
+                        {overlap.neighborhoods.map((n) => {
+                          const eaterLink = NEIGHBORHOOD_EATER_LINKS[n];
+                          if (eaterLink) {
+                            return (
+                              <li key={n}>
+                                <a href={eaterLink} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
+                                  Eater Guide: {n}
+                                </a>
+                              </li>
+                            );
+                          }
+                          return null;
+                        })}
+                      </ul>
+                    </Box>
+                  )}
+                  <Button onClick={startOver} variant="text" sx={{ mt: 2 }}>
+                    Start Over
+                  </Button>
+                </>
+              ) : (
+                <Paper sx={{ p: 2, borderRadius: 2, backgroundColor: 'warning.light' }}>
+                  <Typography variant="body2" color="warning.contrastText" sx={{ textAlign: 'center' }}>
+                    No matching dates, times, or neighborhoods found. Maybe one of you can be a little more flexible!
+                  </Typography>
+                </Paper>
+              )}
+              <Button onClick={startOver} variant="text" sx={{ mt: 2 }}>
                 Start Over
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-2">
-                Your name (optional)
-              </label>
-              <input
-                className="w-full rounded-md border px-3 py-2"
-                placeholder="Your name"
+              </Button>
+            </Box>
+          ) : isSecondUser && other ? (
+            <Box>
+              <Paper sx={{ mb: 2, p: 2, borderRadius: 2, backgroundColor: 'grey.100' }}>
+                <Typography variant="body2" color="text.secondary">Invited by:</Typography>
+                <Typography variant="subtitle1">{other.name || "Friend"}</Typography>
+                <Box mt={1}>
+                  <Typography variant="body2" color="text.secondary">
+                    {Object.keys(otherDates).length > 0 ? (
+                      <ul style={{ listStyleType: 'disc', paddingLeft: '20px' }}>
+                        {Object.entries(otherDates).map(([d, ranges]) => (
+                          <li key={d}>
+                            {d}: {(Array.isArray(ranges) ? ranges : []).join(", ")}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      "No dates selected"
+                    )}
+                  </Typography>
+                </Box>
+              </Paper>
+
+              <TextField
+                fullWidth
+                label="Your name (optional)"
                 value={me.name}
                 onChange={(e) => setMe((s) => ({ ...s, name: e.target.value }))}
-              />
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-2">
-                Choose dates & times
-              </label>
-
-              <input
-                type="date"
-                className="w-full border rounded-md px-3 py-2 mb-2"
-                onChange={handleDateSelect}
+                sx={{ mb: 2 }}
               />
 
-              <div className="mt-2 space-y-3">
-                {Object.keys(meDates).map((d) => (
-                  <div key={d} className="border rounded-md p-2">
-                    <div className="font-medium text-sm mb-1">{d}</div>
-                    <div className="flex flex-wrap gap-2 justify-start">
-                      {TIME_RANGES.map((r) => {
-                        const selectedForDate = Array.isArray(meDates[d])
-                          ? meDates[d]
-                          : [];
-                        const active = selectedForDate.includes(r);
-                        return (
-                          <button
-                            key={r}
-                            onClick={() => toggleTimeRange(d, r)}
-                            className={`flex items-center px-4 py-2 rounded-full border text-sm transition-colors whitespace-nowrap
-                              ${
-                                active
-                                  ? "bg-blue-50 text-blue-700 border-blue-400"
-                                  : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
-                              }`}
-                            style={{
-                              WebkitTapHighlightColor: "transparent",
-                              userSelect: "none",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {active && <span className="mr-2">✓</span>}
-                            {r}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+              <Box mb={2}>
+                <Typography variant="body1" sx={{ mb: 1 }}>Choose dates & times</Typography>
+                <TextField
+                  fullWidth
+                  type="date"
+                  onChange={handleDateSelect}
+                  sx={{ mb: 2 }}
+                />
+                <Box className="space-y-3">
+                  {Object.keys(meDates).map((d) => (
+                    <Paper key={d} sx={{ p: 2, borderRadius: 2, border: '1px solid #ddd' }}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>{d}</Typography>
+                        <Button
+                          onClick={() => handleDateRemove(d)}
+                          variant="text"
+                          color="error"
+                          size="small"
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                      <Box className="flex flex-wrap gap-2">
+                        {TIME_RANGES.map((r) => {
+                          const selectedForDate = Array.isArray(meDates[d]) ? meDates[d] : [];
+                          const active = selectedForDate.includes(r);
+                          return (
+                            <Button
+                              key={r}
+                              onClick={() => toggleTimeRange(d, r)}
+                              variant={active ? "contained" : "outlined"}
+                              color="primary"
+                              size="small"
+                              sx={{ textTransform: 'none' }}
+                            >
+                              {r}
+                            </Button>
+                          );
+                        })}
+                      </Box>
+                    </Paper>
+                  ))}
+                </Box>
+              </Box>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Neighborhoods
-              </label>
-              <div className="flex flex-wrap gap-2 justify-start">
-                {NEIGHBORHOODS.map((n) => {
-                  const active = me.neighborhoods.includes(n);
-                  return (
-                    <button
-                      key={n}
-                      onClick={() => toggleNeighborhood(n)}
-                      className={`flex items-center px-4 py-2 rounded-full border text-sm transition-colors whitespace-nowrap
-                        ${
-                          active
-                            ? "bg-blue-50 text-blue-700 border-blue-400"
-                            : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
-                        }`}
-                      style={{
-                        WebkitTapHighlightColor: "transparent",
-                        userSelect: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {active && <span className="mr-2">✓</span>}
-                      {n}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+              <Box mb={2}>
+                <Typography variant="body1" sx={{ mb: 1 }}>Neighborhoods</Typography>
+                <Box className="flex flex-wrap gap-2">
+                  {NEIGHBORHOODS.map((n) => {
+                    const active = me.neighborhoods.includes(n);
+                    return (
+                      <Button
+                        key={n}
+                        onClick={() => toggleNeighborhood(n)}
+                        variant={active ? "contained" : "outlined"}
+                        color="primary"
+                        size="small"
+                        sx={{ textTransform: 'none' }}
+                      >
+                        {n}
+                      </Button>
+                    );
+                  })}
+                </Box>
+              </Box>
 
-            <hr className="my-3" />
+              <hr className="my-3" />
 
-            <div className="flex gap-2 mb-2">
-              <button
-                onClick={makeShareLink}
-                className="flex-1 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold"
-              >
-                Save & Share Link
-              </button>
+              <Box display="flex" gap={2} mt={2}>
+                <Button
+                  onClick={makeResultsLink}
+                  variant="contained"
+                  color="secondary"
+                  fullWidth
+                  sx={{ textTransform: 'none' }}
+                >
+                  Get Shareable Results Link
+                </Button>
+                <Button onClick={startOver} variant="outlined" sx={{ textTransform: 'none' }}>
+                  Start Over
+                </Button>
+              </Box>
+            </Box>
+          ) : (
+            <Box>
+              <TextField
+                fullWidth
+                label="Your name (optional)"
+                value={me.name}
+                onChange={(e) => setMe((s) => ({ ...s, name: e.target.value }))}
+                sx={{ mb: 2 }}
+              />
 
-              <button
-                onClick={() => {
-                  const session = encodeSession(me);
-                  if (session) {
-                    const base = `${window.location.origin}${window.location.pathname}?session=${session}`;
-                    window.history.replaceState({}, "", base);
-                    setOther(me);
-                    setIsSecondUser(true);
-                  }
-                }}
-                className="px-4 py-2 rounded-xl border"
-              >
-                I'll fill out my date's preference
-              </button>
-            </div>
+              <Box mb={2}>
+                <Typography variant="body1" sx={{ mb: 1 }}>Choose dates & times</Typography>
+                <TextField
+                  fullWidth
+                  type="date"
+                  onChange={handleDateSelect}
+                  sx={{ mb: 2 }}
+                />
+                <Box className="space-y-3">
+                  {Object.keys(meDates).map((d) => (
+                    <Paper key={d} sx={{ p: 2, borderRadius: 2, border: '1px solid #ddd' }}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>{d}</Typography>
+                        <Button
+                          onClick={() => handleDateRemove(d)}
+                          variant="text"
+                          color="error"
+                          size="small"
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                      <Box className="flex flex-wrap gap-2">
+                        {TIME_RANGES.map((r) => {
+                          const selectedForDate = Array.isArray(meDates[d]) ? meDates[d] : [];
+                          const active = selectedForDate.includes(r);
+                          return (
+                            <Button
+                              key={r}
+                              onClick={() => toggleTimeRange(d, r)}
+                              variant={active ? "contained" : "outlined"}
+                              color="primary"
+                              size="small"
+                              sx={{ textTransform: 'none' }}
+                            >
+                              {r}
+                            </Button>
+                          );
+                        })}
+                      </Box>
+                    </Paper>
+                  ))}
+                </Box>
+              </Box>
 
-            <div className="text-xs text-gray-500">
-              Tip: After clicking Save & Share Link, the link is in your clipboard.
-              Now text your date!
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+              <Box mb={2}>
+                <Typography variant="body1" sx={{ mb: 1 }}>Neighborhoods</Typography>
+                <Box className="flex flex-wrap gap-2">
+                  {NEIGHBORHOODS.map((n) => {
+                    const active = me.neighborhoods.includes(n);
+                    return (
+                      <Button
+                        key={n}
+                        onClick={() => toggleNeighborhood(n)}
+                        variant={active ? "contained" : "outlined"}
+                        color="primary"
+                        size="small"
+                        sx={{ textTransform: 'none' }}
+                      >
+                        {n}
+                      </Button>
+                    );
+                  })}
+                </Box>
+              </Box>
+
+              <hr className="my-3" />
+
+              <Box display="flex" gap={2} mb={1}>
+                <Button
+                  onClick={makeShareLink}
+                  variant="contained"
+                  fullWidth
+                  sx={{ textTransform: 'none' }}
+                >
+                  Save & Share Link
+                </Button>
+                <Button
+                  onClick={() => {
+                    const session = encodeSession(me);
+                    if (session) {
+                      const base = `${window.location.origin}${window.location.pathname}?session=${session}`;
+                      window.history.replaceState({}, "", base);
+                      setOther(me);
+                      setIsSecondUser(true);
+                    }
+                  }}
+                  variant="outlined"
+                  sx={{ textTransform: 'none' }}
+                >
+                  I'll fill out my date's preference
+                </Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary">
+                Tip: After clicking Save & Share Link, the link is in your clipboard. Now text your date!
+              </Typography>
+            </Box>
+          )}
+        </Paper>
+      </Box>
+    </ThemeProvider>
   );
 }
