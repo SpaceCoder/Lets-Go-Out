@@ -2,10 +2,10 @@ import React, { useState, useEffect } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
-// DinnerMatch - Simplified MVP
+// Let's Go Out - Simplified MVP
 // Removed map complexity — neighborhoods are now a simple multi-select list
 
-export default function DinnerMatch() {
+export default function LetsGoOut() {
   const TIME_RANGES = ["Morning", "Afternoon", "Evening", "Night"];
 
   const NEIGHBORHOODS = [
@@ -54,6 +54,7 @@ export default function DinnerMatch() {
   const [other, setOther] = useState(null);
   const [overlap, setOverlap] = useState({ dates: {}, neighborhoods: [] });
   const [suggestions, setSuggestions] = useState([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const isObject = (v) => v && typeof v === "object" && !Array.isArray(v);
   const safeDates = (obj) => (obj && isObject(obj.dates) ? obj.dates : {});
@@ -75,6 +76,16 @@ export default function DinnerMatch() {
       dates[date] = updated;
       return { ...prev, dates };
     });
+  }
+
+  function handleDateSelect(e) {
+    const date = e.target.value;
+    if (!date) return;
+    setMe((prev) => {
+      if (prev.dates[date]) return prev; // prevent duplicates
+      return { ...prev, dates: { ...prev.dates, [date]: [] } };
+    });
+    setShowDatePicker(false);
   }
 
   function encodeSession(obj) {
@@ -186,8 +197,8 @@ export default function DinnerMatch() {
     <div className="min-h-screen bg-gray-50 flex items-start justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-4">
         <header className="mb-4">
-          <h1 className="text-2xl font-semibold">DinnerMatch</h1>
-          <p className="text-sm text-gray-600">Find a time & place to eat — fast.</p>
+          <h1 className="text-2xl font-semibold">Let's Go Out</h1>
+          <p className="text-sm text-gray-600">Share when you're free and where you could meet</p>
         </header>
 
         {isSecondUser && other ? (
@@ -220,11 +231,29 @@ export default function DinnerMatch() {
 
             <div className="mb-3">
               <label className="block text-sm font-medium mb-2">Choose dates & times</label>
-              <DayPicker
-                mode="multiple"
-                selected={Object.keys(meDates).map((d) => new Date(d))}
-                onSelect={(days) => setMe((prev) => ({ ...prev, dates: daysToDatesMap(days) }))}
-              />
+              
+              <button
+                onClick={() => setShowDatePicker(!showDatePicker)}
+                className="mb-3 px-3 py-1 rounded-full border bg-white text-gray-700 text-sm hover:bg-gray-50"
+              >
+                {showDatePicker ? "Hide Calendar" : "Pick Dates"}
+              </button>
+
+              {showDatePicker ? (
+                <DayPicker
+                  mode="multiple"
+                  selected={Object.keys(meDates).map((d) => new Date(d))}
+                  onSelect={(days) => setMe((prev) => ({ ...prev, dates: daysToDatesMap(days) }))}
+                />
+              ) : (
+                <div>
+                  <input
+                    type="date"
+                    className="w-full border rounded-md px-3 py-2 mb-2"
+                    onChange={handleDateSelect}
+                  />
+                </div>
+              )}
 
               <div className="mt-2 space-y-3">
                 {Object.keys(meDates).map((d) => (
@@ -238,7 +267,9 @@ export default function DinnerMatch() {
                           <button
                             key={r}
                             onClick={() => toggleTimeRange(d, r)}
-                            className={`px-3 py-1 rounded-full border ${active ? "bg-gray-800 text-white" : "bg-white text-gray-700"}`}
+                            className={`px-3 py-1 rounded-full border transition-colors ${
+                              active ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                            }`}
                           >
                             {r}
                           </button>
@@ -259,7 +290,9 @@ export default function DinnerMatch() {
                     <button
                       key={n}
                       onClick={() => toggleNeighborhood(n)}
-                      className={`px-3 py-1 rounded-full border text-sm ${active ? "bg-gray-800 text-white" : "bg-white text-gray-700"}`}
+                      className={`px-3 py-1 rounded-full border text-sm transition-colors ${
+                        active ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                      }`}
                     >
                       {n}
                     </button>
@@ -300,11 +333,29 @@ export default function DinnerMatch() {
 
             <div className="mb-3">
               <label className="block text-sm font-medium mb-2">Choose dates & times</label>
-              <DayPicker
-                mode="multiple"
-                selected={Object.keys(meDates).map((d) => new Date(d))}
-                onSelect={(days) => setMe((prev) => ({ ...prev, dates: daysToDatesMap(days) }))}
-              />
+              
+              <button
+                onClick={() => setShowDatePicker(!showDatePicker)}
+                className="mb-3 px-3 py-1 rounded-full border bg-white text-gray-700 text-sm hover:bg-gray-50"
+              >
+                {showDatePicker ? "Hide Calendar" : "Pick Dates"}
+              </button>
+
+              {showDatePicker ? (
+                <DayPicker
+                  mode="multiple"
+                  selected={Object.keys(meDates).map((d) => new Date(d))}
+                  onSelect={(days) => setMe((prev) => ({ ...prev, dates: daysToDatesMap(days) }))}
+                />
+              ) : (
+                <div>
+                  <input
+                    type="date"
+                    className="w-full border rounded-md px-3 py-2 mb-2"
+                    onChange={handleDateSelect}
+                  />
+                </div>
+              )}
 
               <div className="mt-2 space-y-3">
                 {Object.keys(meDates).map((d) => (
@@ -318,7 +369,9 @@ export default function DinnerMatch() {
                           <button
                             key={r}
                             onClick={() => toggleTimeRange(d, r)}
-                            className={`px-3 py-1 rounded-full border ${active ? "bg-gray-800 text-white" : "bg-white text-gray-700"}`}
+                            className={`px-3 py-1 rounded-full border transition-colors ${
+                              active ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                            }`}
                           >
                             {r}
                           </button>
@@ -339,7 +392,9 @@ export default function DinnerMatch() {
                     <button
                       key={n}
                       onClick={() => toggleNeighborhood(n)}
-                      className={`px-3 py-1 rounded-full border text-sm ${active ? "bg-gray-800 text-white" : "bg-white text-gray-700"}`}
+                      className={`px-3 py-1 rounded-full border text-sm transition-colors ${
+                        active ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                      }`}
                     >
                       {n}
                     </button>
@@ -347,6 +402,8 @@ export default function DinnerMatch() {
                 })}
               </div>
             </div>
+
+            <hr className="my-3" />
 
             <div className="flex gap-2 mb-2">
               <button onClick={makeShareLink} className="flex-1 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold">
@@ -365,11 +422,11 @@ export default function DinnerMatch() {
                 }}
                 className="px-4 py-2 rounded-xl border"
               >
-                Preview as Invitee
+                I'll fill out my date's preference
               </button>
             </div>
 
-            <div className="text-xs text-gray-500">Tip: After clicking Save & Share Link, paste it into a chat and send it to the other person.</div>
+            <div className="text-xs text-gray-500">Tip: After clicking Save & Share Link, the link is in your clipboard. Now text your date!</div>
           </div>
         )}
 
