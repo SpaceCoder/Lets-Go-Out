@@ -86,7 +86,7 @@ export default function LetsGoOut() {
 
   const [isSecondUser, setIsSecondUser] = useState(false);
   const [isResultsPage, setIsResultsPage] = useState(false);
-  const [me, setMe] = useState({ dates: {}, neighborhoods: [], name: "You" });
+  const [me, setMe] = useState({ dates: {}, neighborhoods: [], name: "You", deniedDates: {}, deniedNeighborhoods: {} });
   const [other, setOther] = useState(null);
   const [overlap, setOverlap] = useState({ dates: {}, neighborhoods: [] });
 
@@ -335,6 +335,46 @@ END:VEVENT
   const meDates = safeDates(me);
   const otherDates = safeDates(other);
 
+  const handleYesNoTime = (date, range, confirm) => {
+    setMe(prev => {
+      const newDates = { ...prev.dates };
+      const newDeniedDates = { ...prev.deniedDates };
+      if (confirm) {
+        const current = Array.isArray(newDates[date]) ? newDates[date] : [];
+        if (!current.includes(range)) {
+          newDates[date] = [...current, range];
+        }
+        delete newDeniedDates[date]?.[range];
+      } else {
+        const current = Array.isArray(newDates[date]) ? newDates[date] : [];
+        newDates[date] = current.filter(r => r !== range);
+        if (!newDeniedDates[date]) {
+          newDeniedDates[date] = {};
+        }
+        newDeniedDates[date][range] = true;
+      }
+      return { ...prev, dates: newDates, deniedDates: newDeniedDates };
+    });
+  };
+
+  const handleYesNoNeighborhood = (neighborhood, confirm) => {
+    setMe(prev => {
+      const newNeighborhoods = prev.neighborhoods || [];
+      const newDeniedNeighborhoods = { ...prev.deniedNeighborhoods };
+      if (confirm) {
+        if (!newNeighborhoods.includes(neighborhood)) {
+          newNeighborhoods.push(neighborhood);
+        }
+        delete newDeniedNeighborhoods[neighborhood];
+      } else {
+        const filtered = newNeighborhoods.filter(n => n !== neighborhood);
+        newDeniedNeighborhoods[neighborhood] = true;
+        return { ...prev, neighborhoods: filtered, deniedNeighborhoods: newDeniedNeighborhoods };
+      }
+      return { ...prev, neighborhoods: newNeighborhoods, deniedNeighborhoods: newDeniedNeighborhoods };
+    });
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <Box className="min-h-screen bg-gray-50 flex items-start justify-center p-4">
@@ -350,7 +390,7 @@ END:VEVENT
 
           {isResultsPage ? (
             <Box className="flex flex-col items-center">
-              {Object.keys(overlap.dates).length > 0 ? (
+              {Object.keys(overlap.dates).length > 0 || overlap.neighborhoods.length > 0 ? (
                 <>
                   <Box className="w-full text-center" mb={2}>
                     <Typography variant="h6" component="h2" color="secondary" sx={{ fontWeight: 'bold' }}>
@@ -407,9 +447,6 @@ END:VEVENT
                       </ul>
                     </Box>
                   )}
-                  <Button onClick={startOver} variant="text" sx={{ mt: 2 }}>
-                    Start Over
-                  </Button>
                 </>
               ) : (
                 <Paper sx={{ p: 2, borderRadius: 2, backgroundColor: 'warning.light' }}>
@@ -425,22 +462,74 @@ END:VEVENT
           ) : isSecondUser && other ? (
             <Box>
               <Paper sx={{ mb: 2, p: 2, borderRadius: 2, backgroundColor: 'grey.100' }}>
-                <Typography variant="body2" color="text.secondary">Invited by:</Typography>
-                <Typography variant="subtitle1">{other.name || "Friend"}</Typography>
-                <Box mt={1}>
-                  <Typography variant="body2" color="text.secondary">
-                    {Object.keys(otherDates).length > 0 ? (
-                      <ul style={{ listStyleType: 'disc', paddingLeft: '20px' }}>
-                        {Object.entries(otherDates).map(([d, ranges]) => (
-                          <li key={d}>
-                            {d}: {(Array.isArray(ranges) ? ranges : []).join(", ")}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      "No dates selected"
-                    )}
-                  </Typography>
+                <Typography variant="h6" component="h2" mb={2}>
+                  {other.name || "A friend"} is available during the following times:
+                </Typography>
+                <Box className="space-y-3">
+                  {Object.entries(otherDates).map(([d, ranges]) => (
+                    <Box key={d} mb={2}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{formatDate(d)}</Typography>
+                      <Box className="flex flex-wrap gap-2 mt-1">
+                        {ranges.map((r, index) => {
+                          const isConfirmed = meDates[d]?.includes(r);
+                          const isDenied = me.deniedDates[d]?.[r];
+                          return (
+                            <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2">{r}</Typography>
+                              <Button
+                                onClick={() => handleYesNoTime(d, r, true)}
+                                variant={isConfirmed ? "contained" : "outlined"}
+                                size="small"
+                                sx={{ textTransform: 'none' }}
+                              >
+                                Yes
+                              </Button>
+                              <Button
+                                onClick={() => handleYesNoTime(d, r, false)}
+                                variant={isDenied ? "contained" : "outlined"}
+                                size="small"
+                                color="error"
+                                sx={{ textTransform: 'none' }}
+                              >
+                                No
+                              </Button>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+                <Typography variant="h6" component="h2" mt={4} mb={2}>
+                  and can meet in the following neighborhoods:
+                </Typography>
+                <Box className="flex flex-wrap gap-2">
+                  {other.neighborhoods.map((n) => {
+                    const isConfirmed = me.neighborhoods.includes(n);
+                    const isDenied = me.deniedNeighborhoods[n];
+                    return (
+                      <Box key={n} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2">{n}</Typography>
+                        <Button
+                          onClick={() => handleYesNoNeighborhood(n, true)}
+                          variant={isConfirmed ? "contained" : "outlined"}
+                          size="small"
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Yes
+                        </Button>
+                        <Button
+                          onClick={() => handleYesNoNeighborhood(n, false)}
+                          variant={isDenied ? "contained" : "outlined"}
+                          size="small"
+                          color="error"
+                          sx={{ textTransform: 'none' }}
+                        >
+                          No
+                        </Button>
+                      </Box>
+                    );
+                  })}
                 </Box>
               </Paper>
 
