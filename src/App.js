@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
 // Let's Go Out - Simplified MVP
@@ -39,6 +38,7 @@ export default function LetsGoOut() {
   ];
 
   const [isSecondUser, setIsSecondUser] = useState(false);
+  const [isResultsPage, setIsResultsPage] = useState(false);
   const [me, setMe] = useState({ dates: {}, neighborhoods: [], name: "You" });
   const [other, setOther] = useState(null);
   const [overlap, setOverlap] = useState({ dates: {}, neighborhoods: [] });
@@ -106,7 +106,15 @@ export default function LetsGoOut() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const session = params.get("session");
-    if (session) {
+    const resultsSession = params.get("resultsSession");
+
+    if (resultsSession) {
+      const parsed = decodeSession(resultsSession);
+      if (parsed) {
+        setOverlap(parsed);
+        setIsResultsPage(true);
+      }
+    } else if (session) {
       const parsed = decodeSession(session);
       if (parsed) {
         const normalized = {
@@ -155,36 +163,125 @@ export default function LetsGoOut() {
       .catch(() => prompt("Copy this link and send it:", url));
   }
 
-  function onSeeOptions() {
-    const p1 = other || me;
-    const p2 = other ? me : null;
-    if (!p2) {
-      alert("Share your link with the other person first, or enter both people's data in sequence.");
+  function makeResultsLink() {
+    const p1 = other;
+    const p2 = me;
+    const ov = computeOverlap(p1, p2);
+
+    if (Object.keys(ov.dates).length === 0 && ov.neighborhoods.length === 0) {
+      alert("There's no overlap. Try being more flexible!");
       return;
     }
-    const ov = computeOverlap(p1, p2);
+
+    const resultsSession = encodeSession(ov);
+    if (!resultsSession) return null;
+    const url = `${window.location.origin}${window.location.pathname}?resultsSession=${resultsSession}`;
+
+    navigator.clipboard
+      .writeText(url)
+      .then(() => alert("Results link copied to clipboard!"))
+      .catch(() => prompt("Copy this link and send it:", url));
+
+    // Also update the URL and display results immediately for the second user
+    window.history.replaceState({}, "", url);
     setOverlap(ov);
-    setTimeout(() => {
-      document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
-    }, 150);
+    setIsResultsPage(true);
   }
 
-  function daysToDatesMap(days) {
-    const selected = Array.isArray(days) ? days : days ? [days] : [];
-    const map = {};
-    selected.forEach((day) => {
-      if (!(day instanceof Date)) return;
-      const iso = day.toISOString().split("T")[0];
-      map[iso] =
-        me && isObject(me.dates) && Array.isArray(me.dates[iso])
-          ? me.dates[iso]
-          : [];
-    });
-    return map;
+  function startOver() {
+    const base = `${window.location.origin}${window.location.pathname}`;
+    window.history.replaceState({}, "", base);
+    setMe({ dates: {}, neighborhoods: [], name: "You" });
+    setOther(null);
+    setOverlap({ dates: {}, neighborhoods: [] });
+    setIsSecondUser(false);
+    setIsResultsPage(false);
   }
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString + 'T00:00:00'); 
+    const options = { weekday: 'long', month: 'short', day: 'numeric' };
+    return date.toLocaleDateString('en-US', options);
+  };
+  
+  const createICalendarString = (overlap) => {
+    let icsString = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Lets Go Out//NONSGML v1.0//EN
+`;
+
+    const getEventTimes = (date, timeRange) => {
+      let start, end;
+      const baseDate = new Date(date);
+      baseDate.setUTCHours(0, 0, 0, 0); // Start of the day in UTC
+
+      switch (timeRange) {
+        case "Morning":
+          start = new Date(baseDate.setUTCHours(9));
+          end = new Date(baseDate.setUTCHours(11));
+          break;
+        case "Afternoon":
+          start = new Date(baseDate.setUTCHours(13));
+          end = new Date(baseDate.setUTCHours(15));
+          break;
+        case "Evening":
+          start = new Date(baseDate.setUTCHours(16));
+          end = new Date(baseDate.setUTCHours(18));
+          break;
+        case "Night":
+          start = new Date(baseDate.setUTCHours(19));
+          end = new Date(baseDate.setUTCHours(22));
+          break;
+        default:
+          return null;
+      }
+
+      return {
+        start: start.toISOString().replace(/[-:]/g, '').slice(0, -5) + 'Z',
+        end: end.toISOString().replace(/[-:]/g, '').slice(0, -5) + 'Z'
+      };
+    };
+
+    Object.entries(overlap.dates).forEach(([date, ranges]) => {
+      ranges.forEach((range) => {
+        const eventTimes = getEventTimes(date, range);
+        if (eventTimes) {
+          const summary = `Lets Go Out - ${range}`;
+          const location = overlap.neighborhoods.join(", ") || "Undecided Neighborhood";
+          const description = `Matched time: ${range}\nCommon Neighborhoods: ${location}`;
+
+          icsString += `BEGIN:VEVENT
+UID:${Date.now()}-${date}-${range}@letsgoout.app
+DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, -5)}Z
+DTSTART:${eventTimes.start}
+DTEND:${eventTimes.end}
+SUMMARY:${summary}
+DESCRIPTION:${description}
+LOCATION:${location}
+END:VEVENT
+`;
+        }
+      });
+    });
+
+    icsString += `END:VCALENDAR`;
+    return icsString;
+  };
+  
+  const downloadICalendar = () => {
+    const icsContent = createICalendarString(overlap);
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'lets-go-out-matches.ics');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const meDates = safeDates(me);
-  const overlapDates = safeDates(overlap);
   const otherDates = safeDates(other);
 
   return (
@@ -196,8 +293,59 @@ export default function LetsGoOut() {
             Share when you're free and where you could meet
           </p>
         </header>
-
-        {isSecondUser && other ? (
+        
+        {isResultsPage ? (
+          <div className="flex flex-col items-center">
+            {Object.keys(overlap.dates).length > 0 ? (
+              <>
+                <div className="w-full text-center">
+                  <h2 className="text-xl font-semibold text-green-800 mb-4">
+                    It's a Match! 🎉
+                  </h2>
+                </div>
+                <div className="w-full space-y-4">
+                  {Object.entries(overlap.dates).map(([d, ranges]) => (
+                    <div key={d} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                      <div className="flex items-center text-lg font-bold mb-2">
+                        <span className="text-gray-500 mr-2">📅</span>
+                        {formatDate(d)}
+                      </div>
+                      <div className="space-y-1">
+                        {ranges.map((r, index) => (
+                          <div key={index} className="flex items-center text-sm text-gray-700">
+                            <span className="text-gray-500 mr-2">⏰</span>
+                            {r}
+                          </div>
+                        ))}
+                      </div>
+                      {overlap.neighborhoods.length > 0 && (
+                        <div className="mt-3 text-sm text-gray-700">
+                          <span className="text-gray-500 mr-2">📍</span>
+                          {overlap.neighborhoods.join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={downloadICalendar}
+                  className="px-4 py-2 mt-6 rounded-xl bg-gray-200 text-gray-800 font-semibold flex items-center"
+                >
+                  <span className="mr-2">🗓️</span> Add to Calendar
+                </button>
+              </>
+            ) : (
+              <div className="w-full p-4 rounded-xl border border-yellow-200 bg-yellow-50 text-yellow-800">
+                <p className="text-center">
+                  No matching dates, times, or neighborhoods found. Maybe one of you can be a little more flexible!
+                </p>
+              </div>
+            )}
+            <button onClick={startOver} className="px-4 py-2 mt-6 rounded-xl border">
+              Start Over
+            </button>
+          </div>
+        ) : isSecondUser && other ? (
           <div>
             <div className="mb-3 p-3 rounded-lg bg-gray-100">
               <div className="text-sm text-gray-700">Invited by:</div>
@@ -234,18 +382,6 @@ export default function LetsGoOut() {
                 Choose dates & times
               </label>
 
-              {/* Hidden React Day Picker */}
-              <div style={{ display: "none" }}>
-                <DayPicker
-                  mode="multiple"
-                  selected={Object.keys(meDates).map((d) => new Date(d))}
-                  onSelect={(days) =>
-                    setMe((prev) => ({ ...prev, dates: daysToDatesMap(days) }))
-                  }
-                />
-              </div>
-
-              {/* iOS style date input */}
               <input
                 type="date"
                 className="w-full border rounded-md px-3 py-2 mb-2"
@@ -322,21 +458,13 @@ export default function LetsGoOut() {
 
             <div className="flex gap-2">
               <button
-                onClick={onSeeOptions}
+                onClick={makeResultsLink}
                 className="flex-1 px-4 py-2 rounded-xl bg-green-600 text-white font-semibold"
               >
-                See Available Options
+                Get Shareable Results Link
               </button>
 
-              <button
-                onClick={() => {
-                  const base = `${window.location.origin}${window.location.pathname}`;
-                  window.history.replaceState({}, "", base);
-                  setIsSecondUser(false);
-                  setOther(null);
-                }}
-                className="px-4 py-2 rounded-xl border"
-              >
+              <button onClick={startOver} className="px-4 py-2 rounded-xl border">
                 Start Over
               </button>
             </div>
@@ -360,18 +488,6 @@ export default function LetsGoOut() {
                 Choose dates & times
               </label>
 
-              {/* Hidden React Day Picker */}
-              <div style={{ display: "none" }}>
-                <DayPicker
-                  mode="multiple"
-                  selected={Object.keys(meDates).map((d) => new Date(d))}
-                  onSelect={(days) =>
-                    setMe((prev) => ({ ...prev, dates: daysToDatesMap(days) }))
-                  }
-                />
-              </div>
-
-              {/* iOS style date input */}
               <input
                 type="date"
                 className="w-full border rounded-md px-3 py-2 mb-2"
@@ -478,44 +594,6 @@ export default function LetsGoOut() {
             </div>
           </div>
         )}
-
-        <div id="results" className="mt-6">
-          {Object.keys(overlapDates).length > 0 && (
-            <div className="mb-3 p-4 rounded-lg bg-green-50 border border-green-200">
-              <h2 className="text-lg font-semibold text-green-800 mb-2">
-                It's a Match! 🎉
-              </h2>
-              <p className="text-sm text-green-700 font-medium">
-                Here are the times and places that work for both of you:
-              </p>
-              <ul className="list-disc list-inside text-sm mt-2 space-y-1">
-                {Object.entries(overlapDates).map(([d, ranges]) => (
-                  <li key={d}>
-                    <strong>{d}:</strong>{" "}
-                    {(Array.isArray(ranges) ? ranges : []).join(", ")}
-                  </li>
-                ))}
-              </ul>
-              {Array.isArray(overlap.neighborhoods) &&
-                overlap.neighborhoods.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-sm text-green-700 font-medium">
-                      Common Neighborhoods:
-                    </p>
-                    <div className="text-sm text-green-900 font-semibold mt-1">
-                      {overlap.neighborhoods.join(", ")}
-                    </div>
-                  </div>
-                )}
-            </div>
-          )}
-          {Object.keys(overlapDates).length === 0 && (
-            <div className="mt-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800">
-              No matching dates, times, or neighborhoods found. Maybe one of you
-              can be a little more flexible!
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
